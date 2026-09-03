@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "ising-mc",
     "matplotlib>=3.11.1",
     "numpy>=2.5.2",
     "pandas>=3.0.5",
@@ -25,3 +26,6 @@ dev = [
     "ipykernel>=7.3.0",
     "pytest>=9.1.1",
 ]
+
+[tool.uv.sources]
+ising-mc = { path = "../ising_mc", editable = true }
