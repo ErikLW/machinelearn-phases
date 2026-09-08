@@ -1,1 +1,3 @@
-from machinelearn_phases.simple_nn_functions.nn_functions import classifier, init_network_params, ReLU
+from machinelearn_phases.functions.nn_functions import classifier, init_network_params, ReLU, cost, batch_cost
+from machinelearn_phases.functions.vanilla_gd import update
+from machinelearn_phases.functions.aux_functions import get_training_set
