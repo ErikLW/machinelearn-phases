@@ -1,10 +1,15 @@
 #import numpy as np
+import warnings
+
 import jax
 import jax.numpy as jnp
 
-def init_network_params(sizes, key, ini_bias_zero = False):
+def init_network_params(sizes, key, ini_bias_zero=False, *, scale_by_layer_width=False):
+    """Initialize weights uniformly; optionally divide each by sqrt(input width).
+
+    Bias initialization is unaffected by layer-width scaling.
+    """
     #rg = np.random.default_rng(1)  # create instance of default random number generator
-    key = jax.random.key(1)
     W_arr = []
     b_arr = []
     for i in range(len(sizes)-1):
@@ -16,6 +21,8 @@ def init_network_params(sizes, key, ini_bias_zero = False):
         minval=-1.0,
         maxval=1.0
         )
+        if scale_by_layer_width:
+            W = W / jnp.sqrt(sizes[i])
         W_arr.append(W)
 
         if ini_bias_zero:
@@ -25,8 +32,8 @@ def init_network_params(sizes, key, ini_bias_zero = False):
             b = jax.random.uniform(
                 key_b,
                 shape=sizes[i+1],
-                minval=-1.0,
-                maxval=1.0)
+                minval=-0.01,
+                maxval=0.01)
             b_arr.append(b)
 
         #W_arr.append(
@@ -50,58 +57,60 @@ def softmax(x):
 
 activation = ReLU
 
-def classifier(params, x_in):
-
+def _logits(params, x_in):
     W_arr, b_arr = params
-
-    depth_nn = len(b_arr)
-    layer_vec_arr = [] #use a list which then contains the np.arrays of the hidden & output layer
-
-    for i in range(depth_nn):
-        if i == 0:
-            y = activation(W_arr[i] @ x_in + b_arr[i])
-            layer_vec_arr.append(y)
-        elif i == range(depth_nn)[-1]:
-            y_out = softmax(W_arr[i] @ layer_vec_arr[i-1] + b_arr[i])
-            layer_vec_arr.append(y_out)
-        else:
-            y = activation(W_arr[i] @ layer_vec_arr[i-1] + b_arr[i])
-            layer_vec_arr.append(y)
-
-    return layer_vec_arr[-1]
-
-#may want to pass params as a dictionary? 
-#may want to define a cost function with only one input?
-
-
-
-def cost(params, x, y_target):
-    y_out = classifier(params, x)
-    return jnp.sum((y_out - y_target)**2)
-
-batched_classifier_eval = jax.vmap(classifier,  in_axes = (None, 0))
-
-def batch_cost(params, X, Y, batch_size = None, rand_key = None):
-
-    if batch_size != None:
-        idx = jax.random.choice(
-                rand_key,
-                X.shape[0],
-                shape=(batch_size,),
-                replace=False
-            )
-
-        X_batch = X[idx]
-        Y_batch = Y[idx]
-
-        batch_output = batched_classifier_eval(params, X_batch)
-
-        mean_batch_cost = jnp.mean(
-            jnp.sum((batch_output - Y_batch)**2, axis=1)
+    if not b_arr:
+        raise ValueError("The network must contain at least one weight layer.")
+    if len(b_arr) == 1:
+        warnings.warn(
+            "The network has no hidden layer; applying softmax directly "
+            "to the single affine output.",
+            UserWarning,
+            stacklevel=3,
         )
-        return mean_batch_cost
 
-    else:
-        batch_output = batched_classifier_eval(params, X)
-        mean_batch_cost = jnp.mean(jnp.sum((batch_output - Y)**2, axis = 1))
-        return mean_batch_cost
+    hidden = x_in
+    for W, b in zip(W_arr[:-1], b_arr[:-1]):
+        hidden = activation(W @ hidden + b)
+    return W_arr[-1] @ hidden + b_arr[-1]
+
+
+def classifier(params, x_in):
+    """Return class probabilities for a single input."""
+    return softmax(_logits(params, x_in))
+
+
+def cost(params, x, y_target, *, loss="squared_error"):
+    """Compute squared-error or categorical cross-entropy loss.
+
+    Targets are one-hot vectors (or probability distributions).
+    Cross-entropy uses log-softmax of logits to avoid log(0) underflow.
+    """
+    if loss == "squared_error":
+        y_out = classifier(params, x)
+        return jnp.sum((y_out - y_target)**2)
+    if loss == "cross_entropy":
+        return -jnp.sum(y_target * jax.nn.log_softmax(_logits(params, x)))
+    raise ValueError(
+        "loss must be 'squared_error' or 'cross_entropy', "
+        f"got {loss!r}"
+    )
+
+
+batched_classifier_eval = jax.vmap(classifier, in_axes=(None, 0))
+
+
+def batch_cost(params, X, Y, batch_size=None, rand_key=None, *,
+               loss="squared_error"):
+    """Average the selected loss over all examples or a random minibatch."""
+    if batch_size is not None:
+        idx = jax.random.choice(
+            rand_key, X.shape[0], shape=(batch_size,), replace=False
+        )
+        X = X[idx]
+        Y = Y[idx]
+
+    losses = jax.vmap(
+        lambda x, y: cost(params, x, y, loss=loss)
+    )(X, Y)
+    return jnp.mean(losses)

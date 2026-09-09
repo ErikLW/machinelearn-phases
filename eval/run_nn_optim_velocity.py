@@ -24,7 +24,7 @@ params = mlp.init_network_params(
 
 results = []
 key = jax.random.PRNGKey(0)
-
+velocity = None
 for i in range(15000):
     #cost, gradval = jax.value_and_grad(mlp.cost)(params, x=x_in, y_target=y_t)
     key, subkey = jax.random.split(key)
@@ -39,9 +39,9 @@ for i in range(15000):
         print(i)
         print(cost)
 
-    params = mlp.update(params, gradval, 0.01)
+    params, velocity = mlp.update(params, gradval, 0.1, momentum=0.9, velocity=velocity)
 
 df = pd.DataFrame(results)
-df.to_csv("results.csv", index = False)
-model_path = Path(__file__).resolve().parents[1] / "data" / "model_params.npz"
+df.to_csv("results_velo_fast.csv", index = False)
+model_path = Path(__file__).resolve().parents[1] / "data" / "model_params_velo_fast.npz"
 mlp.save_model_params(params, model_path)

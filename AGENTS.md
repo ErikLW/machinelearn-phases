@@ -7,6 +7,7 @@
 - Pandas
 - PyTest
 - uv
+- jax
 
 ## Commands
 
