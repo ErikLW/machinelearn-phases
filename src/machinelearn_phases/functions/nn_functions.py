@@ -3,6 +3,7 @@ import warnings
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 def init_network_params(sizes, key, ini_bias_zero=False, *, scale_by_layer_width=False):
     """Initialize weights uniformly; optionally divide each by sqrt(input width).
@@ -114,3 +115,8 @@ def batch_cost(params, X, Y, batch_size=None, rand_key=None, *,
         lambda x, y: cost(params, x, y, loss=loss)
     )(X, Y)
     return jnp.mean(losses)
+
+def max_unit_vector(a):
+    e = np.zeros_like(a, dtype=float)
+    e[np.argmax(a)] = 1.0
+    return e

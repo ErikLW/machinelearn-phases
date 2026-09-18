@@ -1,27 +1,40 @@
+from numbers import Integral
+
 import jax.numpy as jnp
 import ising_mc as ising
 
 
-def get_training_set(T1, T2):
+def get_samples(T, num_samples, *, L=10, burn_in_sweeps=1000,
+                sweeps_between_samples=10):
+    """Return flattened L-by-L configurations; one sweep is L**2 attempts."""
 
-    #This should be done with variable size in the future
+    *_, configs = ising.run_metropolis(
+        L, 1/T, -1, 0.01, num_samples,
+        burn_in_sweeps * L**2, sweeps_between_samples * L**2,
+        return_configurations=True,
+    )
 
-    temp, energy, vare, m, varm, absm, configs_T1 = ising.run_metropolis(10, 1/T1, 1, 0, 3000, 100000, 1000, return_configurations=True)
+    configs = jnp.asarray(configs)
 
-    temp, energy, vare, m, varm, absm, configs_T2 = ising.run_metropolis(10, 1/T2, 1, 0, 3000, 100000, 1000, return_configurations=True)
+    if configs.shape != (num_samples, L, L):
+        raise ValueError("Simulator returned an unexpected configuration shape.")
+    return configs.reshape(num_samples, L**2)
 
-    x_in1 = jnp.stack([x.flatten() for x in configs_T1[:3000]], axis=0)
-    print(x_in1.shape)
-    x_in2 = jnp.stack([x.flatten() for x in configs_T2[:3000]], axis=0)
-    print(x_in2.shape)
 
-    print('stacked from now')
-    X = jnp.concatenate([x_in1, x_in2], axis=0)
-    print(X.shape)
+def get_training_set(T1, T2, *, L=10, num_samples=3000,
+                     burn_in_sweeps=1000, sweeps_between_samples=10):
+    """Generate equally sized classes: T1 -> [0, 1], T2 -> [1, 0]."""
 
-    y_in1 = jnp.stack([jnp.array([0, 1])] * 3000, axis = 0)
-    y_in2 = jnp.stack([jnp.array([1, 0])] * 3000, axis = 0)
-    Y = jnp.concatenate([y_in1,y_in2], axis = 0)
-    print(Y.shape)
+    options = dict(L=L, burn_in_sweeps=burn_in_sweeps,
+                   sweeps_between_samples=sweeps_between_samples)
+    
+    x1 = get_samples(T1, num_samples, **options)
+    x2 = get_samples(T2, num_samples, **options)
 
+    X = jnp.concatenate([x1, x2], axis=0)
+    Y = jnp.concatenate([
+        jnp.tile(jnp.array([0, 1]), (num_samples, 1)),
+        jnp.tile(jnp.array([1, 0]), (num_samples, 1)),
+    ], axis=0)
+    
     return X, Y
